@@ -1,0 +1,36 @@
+services:
+  postgres-db:
+    # Используем зеркало для официального образа postgres
+    image: docker.vscale.top/library/postgres:15-alpine
+    container_name: postgres-db
+    environment:
+      POSTGRES_DB: rebattery_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - rebattery-network
+
+  app:
+    # Используем зеркало для образов eclipse-temurin
+    image: docker.vscale.top/eclipse-temurin:21-jre-alpine
+    container_name: rebattery-app
+    depends_on:
+      - postgres-db
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./target/ReBattery-1.0-SNAPSHOT.jar:/app/app.jar
+    command: java -jar /app/app.jar
+    networks:
+      - rebattery-network
+
+volumes:
+  pgdata:
+
+networks:
+  rebattery-network:
+    driver: bridge
