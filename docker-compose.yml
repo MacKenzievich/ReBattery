@@ -1,36 +1,40 @@
 services:
-  postgres-db:
-    # Используем зеркало для официального образа postgres
-    image: docker.vscale.top/library/postgres:15-alpine
-    container_name: postgres-db
-    environment:
-      POSTGRES_DB: rebattery_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: secret_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    networks:
-      - rebattery-network
-
+  # 1. Ваше Spring Boot приложение ReBattery
   app:
-    # Используем зеркало для образов eclipse-temurin
-    image: docker.vscale.top/eclipse-temurin:21-jre-alpine
+    build: . # Dockerfile будет лежать в корне проекта, сборка локальная!
+    image: rebattery-app
     container_name: rebattery-app
-    depends_on:
-      - postgres-db
     ports:
       - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy # Приложение запустится ТОЛЬКО после полной готовности БД
+    environment:
+      - TZ=Europe/Moscow
+      - JAVA_OPTS=-Duser.timezone=Europe/Moscow
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/rebattery_db
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=secret_password
+
+  # 2. База данных PostgreSQL (с рабочим зеркалом)
+  db:
+    # Заменяем на стабильное Docker-зеркало, чтобы обойти блокировку Docker Hub
+    image: mirror.gcr.io/library/postgres:16.1-alpine
+    container_name: postgres-db
+    ports:
+      - "5432:5432"
+    environment:
+      - TZ=Europe/Moscow
+      - POSTGRES_DB=rebattery_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=secret_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -d $$POSTGRES_DB -U $$POSTGRES_USER"]
+      timeout: 5s
+      interval: 5s
+      retries: 10
     volumes:
-      - ./target/ReBattery-1.0-SNAPSHOT.jar:/app/app.jar
-    command: java -jar /app/app.jar
-    networks:
-      - rebattery-network
+      - pgdata:/var/lib/postgresql/data
 
 volumes:
   pgdata:
-
-networks:
-  rebattery-network:
-    driver: bridge

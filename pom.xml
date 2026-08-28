@@ -20,7 +20,8 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <telegram.starter.version>6.8.0</telegram.starter.version>
+        <!-- Исправленное имя свойства для стабильной версии библиотеки -->
+        <telegrambots.version>6.9.7.1</telegrambots.version>
     </properties>
 
     <dependencies>
@@ -40,7 +41,7 @@
         <dependency>
             <groupId>org.telegram</groupId>
             <artifactId>telegrambots-spring-boot-starter</artifactId>
-            <version>${telegram.starter.version}</version>
+            <version>${telegrambots.version}</version>
         </dependency>
 
         <!-- 5. Стартер для работы с базой данных (JPA / Hibernate) -->
@@ -61,6 +62,20 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <optional>true</optional>
+        </dependency>
+
+        <!-- Добавляем JAXB API, который требует библиотека Telegram/Hibernate -->
+        <dependency>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+            <version>2.3.1</version>
+        </dependency>
+
+        <!-- Добавляем реализацию JAXB -->
+        <dependency>
+            <groupId>org.glassfish.jaxb</groupId>
+            <artifactId>jaxb-runtime</artifactId>
+            <version>2.3.1</version>
         </dependency>
     </dependencies>
 
