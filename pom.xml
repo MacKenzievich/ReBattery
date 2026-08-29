@@ -25,6 +25,22 @@
     </properties>
 
     <dependencies>
+
+        <!-- Source: https://mvnrepository.com/artifact/org.telegram/telegrambots-client -->
+        <dependency>
+            <groupId>org.telegram</groupId>
+            <artifactId>telegrambots-client</artifactId>
+            <version>10.2.1</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- Source: https://mvnrepository.com/artifact/org.telegram/telegrambots-springboot-longpolling-starter -->
+        <dependency>
+            <groupId>org.telegram</groupId>
+            <artifactId>telegrambots-springboot-longpolling-starter</artifactId>
+            <version>10.2.1</version>
+            <scope>compile</scope>
+        </dependency>
         <!-- 2. Базовый стартер Spring Boot (включает логирование и автоконфигурацию) -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -37,18 +53,7 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
-        <!-- 4. Стартер для работы с Telegram-ботом -->
-        <dependency>
-            <groupId>org.telegram</groupId>
-            <artifactId>telegrambots-spring-boot-starter</artifactId>
-            <version>${telegrambots.version}</version>
-        </dependency>
 
-        <!-- 5. Стартер для работы с базой данных (JPA / Hibernate) -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
-        </dependency>
 
         <dependency>
             <groupId>org.postgresql</groupId>
@@ -64,19 +69,7 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Добавляем JAXB API, который требует библиотека Telegram/Hibernate -->
-        <dependency>
-            <groupId>javax.xml.bind</groupId>
-            <artifactId>jaxb-api</artifactId>
-            <version>2.3.1</version>
-        </dependency>
 
-        <!-- Добавляем реализацию JAXB -->
-        <dependency>
-            <groupId>org.glassfish.jaxb</groupId>
-            <artifactId>jaxb-runtime</artifactId>
-            <version>2.3.1</version>
-        </dependency>
     </dependencies>
 
     <build>
