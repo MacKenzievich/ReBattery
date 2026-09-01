@@ -106,6 +106,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
             case "add_user" -> handleAddUserCallBack();
             case "delete_user" -> handleDeleteUser();
             case "show_users" -> handleShowUsersCallBack();
+            case "send_love_message" -> sendLoveMessage();
         }
 
     }
@@ -129,6 +130,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
 
     private void sendLoveMessage() {
         anna.sendLoveMessage();
+        sendAdminMenu(botProperties.getAdminId());
     }
 
     private void handleDeleteUser() {
