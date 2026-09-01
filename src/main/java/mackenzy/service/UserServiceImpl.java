@@ -5,6 +5,8 @@ import mackenzy.model.User;
 import mackenzy.repository.UserRepository;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
@@ -24,5 +26,10 @@ public class UserServiceImpl implements UserService {
     @Override
     public boolean isUser(Long userId) {
         return userRepository.existsById(userId);
+    }
+
+    @Override
+    public List<User> findAllUsers() {
+        return userRepository.findAll();
     }
 }

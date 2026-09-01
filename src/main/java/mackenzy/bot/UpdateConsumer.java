@@ -48,7 +48,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
                 handleStartMessage(update);
                 return;
             } else if (adminStates.containsKey(chatId)) {
-                handleAdminInputNewUser(message, chatId);
+                handleAdminStates(message, chatId);
 
             }
         }
@@ -59,7 +59,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         }
     }
 
-    private void handleAdminInputNewUser(String message, Long chatId) {
+    private void handleAdminStates(String message, Long chatId) {
         State currentState = adminStates.get(chatId).getState();
         if (currentState.equals(State.WAITING_FOR_USER_ID)) {
             try {
@@ -77,8 +77,24 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
             if (isUser(userId)) {
                 sendTextMessage(chatId, "Пользователь успешно добавлен!");
                 adminStates.remove(chatId);
+            } else {
+                sendTextMessage(chatId, "Что-то пошло не так!");
             }
+            sendAdminMenu(chatId);
+        } else if (currentState.equals(State.WAITING_FOR_DELETE_ID)) {
+            try {
+                Long userId = Long.valueOf(message);
+                userService.deleteUser(userId);
+                if (!isUser(userId)) {
+                    sendTextMessage(chatId, "Пользователь успешно удален.");
+                    adminStates.remove(chatId);
+                }
+            } catch (NumberFormatException e) {
+                sendTextMessage(chatId, "Id должен состоять только из цифр!");
+            }
+            sendAdminMenu(chatId);
         }
+
     }
 
     private void handleCallBackQuery(CallbackQuery callbackQuery) {
@@ -88,10 +104,21 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         removeInlineKeyboard(chatId, messageId);
         switch (callBackData) {
             case "add_user" -> handleAddUserCallBack();
-            case "delete_user" -> remoteUserSearch();
-            case "send_love_message" -> sendLoveMessage();
+            case "delete_user" -> handleDeleteUser();
+            case "show_users" -> handleShowUsersCallBack();
         }
 
+    }
+
+    private void handleShowUsersCallBack() {
+        List<User> users = userService.findAllUsers();
+        StringBuilder sb = new StringBuilder("📋 Список всех пользователей:\n\n");
+        for (User user : users) {
+            sb.append("🆔 `").append(user.getId()).append("` — ")
+                    .append(user.getPseudonym() != null ? user.getPseudonym() : "Без имени").append("\n");
+        }
+        sendTextMessage(botProperties.getAdminId(), sb.toString());
+        sendAdminMenu(botProperties.getAdminId());
     }
 
     private void handleAddUserCallBack() {
@@ -104,7 +131,9 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         anna.sendLoveMessage();
     }
 
-    private void remoteUserSearch() {
+    private void handleDeleteUser() {
+        sendTextMessage(botProperties.getAdminId(), "Введите id пользователя, которого нужно удалить.");
+        adminStates.put(botProperties.getAdminId(), new AdminStateContext(State.WAITING_FOR_DELETE_ID, null));
     }
 
 
@@ -112,14 +141,13 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         Long chatId = update.getMessage().getChatId();
         String firstName = update.getMessage().getFrom().getFirstName();
         if (isAdmin(chatId)) {
-            sendTextMessage(chatId, "Привет, " + firstName + "!");
             sendAdminMenu(chatId);
         } else if (isUser(chatId)) {
             sendTextMessage(chatId, "Приветствую, " + firstName);
             sendMenu(chatId);
         } else {
             sendTextMessage(chatId, "Извините. У вас нет доступа. Обратитесь к Mackenzievich");
-            sendTextMessage(botProperties.getAdminId(), firstName + " хочет к нам в друзья! user_id ");
+            sendTextMessage(botProperties.getAdminId(), firstName + " зашел в бот впервые! ID пользователя:");
             sendTextMessage(botProperties.getAdminId(), "" + chatId);
         }
     }
@@ -129,6 +157,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         SendMessage message = SendMessage.builder()
                 .text(text)
                 .chatId(chatId.toString())
+                .parseMode("Markdown")
                 .build();
         try {
             telegramClient.execute(message);
@@ -139,8 +168,8 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
 
     private void sendAdminMenu(Long chatId) {
         SendMessage message = SendMessage.builder()
-                .text("Что желаешь сделать?")
                 .chatId(chatId.toString())
+                .text("admin menu")
                 .build();
 
         var button1 = InlineKeyboardButton.builder()
@@ -154,8 +183,8 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
                 .build();
 
         var button3 = InlineKeyboardButton.builder()
-                .text("Отметить замену батареи")
-                .callbackData("mark_change_battery")
+                .text("Показать список пользователей")
+                .callbackData("show_users")
                 .build();
 
         var button4 = InlineKeyboardButton.builder()
