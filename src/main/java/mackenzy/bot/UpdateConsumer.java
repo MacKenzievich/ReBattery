@@ -1,6 +1,7 @@
 package mackenzy.bot;
 
 import mackenzy.model.AdminStateContext;
+import mackenzy.model.ArSt;
 import mackenzy.model.State;
 import mackenzy.model.User;
 import mackenzy.service.UserService;
@@ -19,6 +20,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import java.util.HashMap;
+import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Map;
 
@@ -31,6 +33,15 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
     private final UserService userService;
     private final Anna anna;
     private Map<Long, AdminStateContext> adminStates = new HashMap<>();
+    private ArSt a;
+
+    private boolean isMyPoint = false;
+    private boolean isEnemyPoint = false;
+
+    private Double myPointX;
+    private Double myPointY;
+    private Double enemyPointX;
+    private Double enemyPointY;
 
     public UpdateConsumer(BotProperties botProperties, UserService userService, @Lazy Anna anna) {
         this.telegramClient = new OkHttpTelegramClient(botProperties.getToken());
@@ -49,7 +60,12 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
                 return;
             } else if (adminStates.containsKey(chatId)) {
                 handleAdminStates(message, chatId);
-
+            } else if (a != null) {
+                try {
+                    handleInputDistance(chatId, message);
+                } catch (NumberFormatException e) {
+                    sendTextMessage(chatId, "Координаты должны быть числом!");
+                }
             }
         }
 
@@ -57,6 +73,36 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
             handleCallBackQuery(update.getCallbackQuery());
 
         }
+    }
+
+
+    private void handleInputDistance(Long chatId, String message) {
+        if (a.equals(ArSt.WAIT_MY_X)) {
+            myPointX = Double.parseDouble(message);
+            sendTextMessage(chatId, "Введите координату Y");
+            a = ArSt.WAIT_MY_Y;
+        } else if (a.equals(ArSt.WAIT_MY_Y)) {
+            myPointY = Double.parseDouble(message);
+            sendTextMessage(chatId, "Ваши координаты X: " + myPointX + ", Y: " + myPointY);
+            sendMenu(chatId);
+        } else if (a.equals(ArSt.WAIT_EN_X)) {
+            enemyPointX = Double.parseDouble(message);
+            a = ArSt.WAIT_EN_Y;
+            sendTextMessage(chatId, "Введите координату Y");
+        } else if (a.equals(ArSt.WAIT_EN_Y)) {
+            enemyPointY = Double.parseDouble(message);
+            sendTextMessage(chatId, "Вражеские координаты Х: " + enemyPointX + ", Y: " + enemyPointY);
+            sendMenu(chatId);
+        }
+    }
+
+    private void handleCalc(Long chatId) {
+        double deltaX = enemyPointX - myPointX;
+        double deltaY = enemyPointY - myPointY;
+        double deltaDistance = Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2));
+        long realDistance = Math.round(deltaDistance * 100.0);
+        sendTextMessage(chatId, "Раccтояние до цели:  " + realDistance + " метров.");
+        sendMenu(chatId);
     }
 
     private void handleAdminStates(String message, Long chatId) {
@@ -106,8 +152,21 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
             case "add_user" -> handleAddUserCallBack();
             case "delete_user" -> handleDeleteUser();
             case "show_users" -> handleShowUsersCallBack();
+            case "my_point" -> handleMyPoint(chatId);
+            case "enemy_point" -> handleEnemyPoint(chatId);
+            case "calc" -> handleCalc(chatId);
         }
 
+    }
+
+    private void handleEnemyPoint(Long chatId) {
+        a = ArSt.WAIT_EN_X;
+        sendTextMessage(chatId, "Введите координату X");
+    }
+
+    private void handleMyPoint(Long chatId) {
+        a = ArSt.WAIT_MY_X;
+        sendTextMessage(chatId, "Введите координату X");
     }
 
     private void handleShowUsersCallBack() {
@@ -142,6 +201,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         String firstName = update.getMessage().getFrom().getFirstName();
         if (isAdmin(chatId)) {
             sendAdminMenu(chatId);
+            sendMenu(chatId);
         } else if (isUser(chatId)) {
             sendTextMessage(chatId, "Приветствую, " + firstName);
             sendMenu(chatId);
@@ -215,7 +275,37 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
     }
 
     private void sendMenu(Long chatId) {
+        SendMessage message = SendMessage.builder()
+                .chatId(chatId.toString())
+                .text("Меню артиллериста")
+                .build();
 
+        var button1 = InlineKeyboardButton.builder()
+                .text("Установить свои координаты.")
+                .callbackData("my_point")
+                .build();
+
+        var button2 = InlineKeyboardButton.builder()
+                .text("Установить координаты цели.")
+                .callbackData("enemy_point")
+                .build();
+        var button3 = InlineKeyboardButton.builder()
+                .text("Рассчитать расстояние")
+                .callbackData("calc")
+                .build();
+
+        List<InlineKeyboardRow> keyboardRows = List.of(
+                new InlineKeyboardRow(button1),
+                new InlineKeyboardRow(button2),
+                new InlineKeyboardRow(button3));
+
+        InlineKeyboardMarkup markup = new InlineKeyboardMarkup(keyboardRows);
+        message.setReplyMarkup(markup);
+        try {
+            telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void removeInlineKeyboard(Long chatId, Integer messageId) {
