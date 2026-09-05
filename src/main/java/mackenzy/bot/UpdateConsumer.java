@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
@@ -97,12 +98,18 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
     }
 
     private void handleCalc(Long chatId) {
-        double deltaX = enemyPointX - myPointX;
-        double deltaY = enemyPointY - myPointY;
-        double deltaDistance = Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2));
-        long realDistance = Math.round(deltaDistance * 100.0);
-        sendTextMessage(chatId, "Раccтояние до цели:  " + realDistance + " метров.");
-        sendMenu(chatId);
+        try {
+            double deltaX = enemyPointX - myPointX;
+            double deltaY = enemyPointY - myPointY;
+            double deltaDistance = Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2));
+            long realDistance = Math.round(deltaDistance * 100.0);
+            sendMenu(chatId);
+            sendTextMessage(chatId, "Раccтояние: \uD83C\uDFAF \uD83D\uDCA3 \uD83D\uDD25 " + realDistance
+                    + " метров.\uD83D\uDD25 \uD83D\uDCA3 \uD83C\uDFAF");
+        } catch (NullPointerException e) {
+            sendMenu(chatId);
+            sendTextMessage(chatId, "Для начала введите все координаты.");
+        }
     }
 
     private void handleAdminStates(String message, Long chatId) {
@@ -147,7 +154,7 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         String callBackData = callbackQuery.getData();
         Long chatId = callbackQuery.getMessage().getChatId();
         Integer messageId = callbackQuery.getMessage().getMessageId();
-        removeInlineKeyboard(chatId, messageId);
+        deleteMessage(chatId, messageId);
         switch (callBackData) {
             case "add_user" -> handleAddUserCallBack();
             case "delete_user" -> handleDeleteUser();
@@ -308,16 +315,15 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         }
     }
 
-    private void removeInlineKeyboard(Long chatId, Integer messageId) {
-        EditMessageReplyMarkup edit = EditMessageReplyMarkup.builder()
+    private void deleteMessage(Long chatId, Integer messageId) {
+        DeleteMessage deleteMessage = DeleteMessage.builder()
                 .chatId(chatId.toString())
                 .messageId(messageId)
-                .replyMarkup(InlineKeyboardMarkup.builder().keyboard(List.of()).build())
                 .build();
         try {
-            telegramClient.execute(edit);
+            telegramClient.execute(deleteMessage);
         } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
+            System.err.println("Не удалось удалить сообщение: " + e.getMessage());
         }
     }
 
