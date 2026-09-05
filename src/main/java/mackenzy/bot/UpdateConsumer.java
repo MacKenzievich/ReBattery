@@ -11,7 +11,6 @@ import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.util.LongPollingSingleThreadUpdateConsumer;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
-import org.telegram.telegrambots.meta.api.methods.updatingmessages.EditMessageReplyMarkup;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
@@ -21,10 +20,18 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 import java.util.HashMap;
-import java.util.IllegalFormatException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
+class UserSession {
+    public ArSt currentStep;
+    public Double myPointX;
+    public Double myPointY;
+    public Double enemyPointX;
+    public Double enemyPointY;
+    public boolean isOnTower = false;
+}
 
 @Component
 public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
@@ -34,21 +41,18 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
     private final UserService userService;
     private final Anna anna;
     private Map<Long, AdminStateContext> adminStates = new HashMap<>();
-    private ArSt a;
 
-    private boolean isMyPoint = false;
-    private boolean isEnemyPoint = false;
-
-    private Double myPointX;
-    private Double myPointY;
-    private Double enemyPointX;
-    private Double enemyPointY;
+    private final Map<Long, UserSession> userSessions = new ConcurrentHashMap<>();
 
     public UpdateConsumer(BotProperties botProperties, UserService userService, @Lazy Anna anna) {
         this.telegramClient = new OkHttpTelegramClient(botProperties.getToken());
         this.botProperties = botProperties;
         this.userService = userService;
         this.anna = anna;
+    }
+
+    private UserSession getOrCreateSession(Long chatId) {
+        return userSessions.computeIfAbsent(chatId, id -> new UserSession());
     }
 
     @Override
@@ -61,54 +65,93 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
                 return;
             } else if (adminStates.containsKey(chatId)) {
                 handleAdminStates(message, chatId);
-            } else if (a != null) {
+                return;
+            }
+
+            UserSession session = getOrCreateSession(chatId);
+            if (session.currentStep != null) {
                 try {
-                    handleInputDistance(chatId, message);
+                    handleInputDistance(chatId, message, session);
                 } catch (NumberFormatException e) {
-                    sendTextMessage(chatId, "Координаты должны быть числом!");
+                    sendTextMessage(chatId, "⚠️ Неверный формат! Введите число.");
                 }
             }
-        }
 
+
+        }
         if (update.hasCallbackQuery()) {
             handleCallBackQuery(update.getCallbackQuery());
 
         }
     }
 
+    private void handleInputDistance(Long chatId, String message, UserSession session) {
+        double value = Double.parseDouble(message);
 
-    private void handleInputDistance(Long chatId, String message) {
-        if (a.equals(ArSt.WAIT_MY_X)) {
-            myPointX = Double.parseDouble(message);
+        if (session.currentStep.equals(ArSt.WAIT_MY_X)) {
+            session.myPointX = value;
             sendTextMessage(chatId, "Введите координату Y");
-            a = ArSt.WAIT_MY_Y;
-        } else if (a.equals(ArSt.WAIT_MY_Y)) {
-            myPointY = Double.parseDouble(message);
-            sendTextMessage(chatId, "Ваши координаты X: " + myPointX + ", Y: " + myPointY);
+            session.currentStep = ArSt.WAIT_MY_Y;
+        } else if (session.currentStep.equals(ArSt.WAIT_MY_Y)) {
+            session.myPointY = value;
+            session.currentStep = null;
+            sendTextMessage(chatId, "Ваши координаты X: " + session.myPointX + ", Y: " +session.myPointY);
             sendMenu(chatId);
-        } else if (a.equals(ArSt.WAIT_EN_X)) {
-            enemyPointX = Double.parseDouble(message);
-            a = ArSt.WAIT_EN_Y;
+        } else if (session.currentStep.equals(ArSt.WAIT_EN_X)) {
+            session.enemyPointX = value;
+            session.currentStep = ArSt.WAIT_EN_Y;
             sendTextMessage(chatId, "Введите координату Y");
-        } else if (a.equals(ArSt.WAIT_EN_Y)) {
-            enemyPointY = Double.parseDouble(message);
-            sendTextMessage(chatId, "Вражеские координаты Х: " + enemyPointX + ", Y: " + enemyPointY);
+        } else if (session.currentStep.equals(ArSt.WAIT_EN_Y)) {
+            session.enemyPointY = value;
+            session.currentStep = null;
+            sendTextMessage(chatId, "Вражеские координаты Х: " + session.enemyPointX + ", Y: " + session.enemyPointY);
             sendMenu(chatId);
         }
     }
 
     private void handleCalc(Long chatId) {
+        UserSession session = getOrCreateSession(chatId);
         try {
-            double deltaX = enemyPointX - myPointX;
-            double deltaY = enemyPointY - myPointY;
-            double deltaDistance = Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2));
-            long realDistance = Math.round(deltaDistance * 100.0);
+            double deltaX = session.enemyPointX - session.myPointX;
+            double deltaY = session.enemyPointY - session.myPointY;
+
+            // Считаем плоское расстояние по карте
+            double flatDistance = Math.sqrt(Math.pow(deltaX, 2) + Math.pow(deltaY, 2)) * 100;
+
+            double realDistanceCalculated;
+
+            if (session.isOnTower) {
+                double heightZ = 22.0;
+                realDistanceCalculated = flatDistance - heightZ;
+
+                if (realDistanceCalculated < 0) {
+                    realDistanceCalculated = 0;
+                }
+            } else {
+                realDistanceCalculated = flatDistance;
+            }
+
+            long realDistance = Math.round(realDistanceCalculated);
+            double radians = Math.atan2(deltaX, deltaY);
+            double degrees = Math.toDegrees(radians);
+
+            if (degrees < 0) {
+                degrees += 360.0;
+            }
+            float azimuth = Math.round(degrees);
             sendMenu(chatId);
-            sendTextMessage(chatId, "Раccтояние: \uD83C\uDFAF \uD83D\uDCA3 \uD83D\uDD25 " + realDistance
-                    + " метров.\uD83D\uDD25 \uD83D\uDCA3 \uD83C\uDFAF");
+            String towerHeader = session.isOnTower ? "🗼 <b>Режим стрельбы: С ВЫСОТЫ</b>\n" :
+                    "🪖 <b>Режим стрельбы: С ЗЕМЛИ</b>\n";
+            String messageText = "<b>⚔\uD83D\uDCBB Расчет окончен:</b>\n" +
+                    towerHeader +
+                    "🧭 Направление: <b>" + azimuth + "°</b>\n" +
+                    "🎯 Расстояние: <b>" + realDistance + "</b> м.";
+
+
+            sendTextMessageHtml(chatId, messageText);
         } catch (NullPointerException e) {
             sendMenu(chatId);
-            sendTextMessage(chatId, "Для начала введите все координаты.");
+            sendTextMessage(chatId, "❌ Ошибка: координаты точек не заданы.");
         }
     }
 
@@ -154,7 +197,9 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         String callBackData = callbackQuery.getData();
         Long chatId = callbackQuery.getMessage().getChatId();
         Integer messageId = callbackQuery.getMessage().getMessageId();
-        deleteMessage(chatId, messageId);
+        if (!"toggle_tower".equals(callBackData)) {
+            deleteMessage(chatId, messageId);
+        }
         switch (callBackData) {
             case "add_user" -> handleAddUserCallBack();
             case "delete_user" -> handleDeleteUser();
@@ -162,17 +207,27 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
             case "my_point" -> handleMyPoint(chatId);
             case "enemy_point" -> handleEnemyPoint(chatId);
             case "calc" -> handleCalc(chatId);
+            case "toggle_tower" -> handleTower(chatId, messageId);
         }
 
     }
 
+    private void handleTower(Long chatId, Integer messId) {
+        UserSession session = getOrCreateSession(chatId);
+        session.isOnTower = !session.isOnTower;
+        deleteMessage(chatId, messId);
+        sendMenu(chatId);
+    }
+
     private void handleEnemyPoint(Long chatId) {
-        a = ArSt.WAIT_EN_X;
+        UserSession session = getOrCreateSession(chatId);
+        session.currentStep = ArSt.WAIT_EN_X;
         sendTextMessage(chatId, "Введите координату X");
     }
 
     private void handleMyPoint(Long chatId) {
-        a = ArSt.WAIT_MY_X;
+        UserSession session = getOrCreateSession(chatId);
+        session.currentStep = ArSt.WAIT_MY_X;
         sendTextMessage(chatId, "Введите координату X");
     }
 
@@ -233,6 +288,20 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
         }
     }
 
+    public void sendTextMessageHtml(Long chatId, String text) {
+        SendMessage message = SendMessage.builder()
+                .text(text)
+                .chatId(chatId.toString())
+                .parseMode("HTML")
+                .build();
+        try {
+            telegramClient.execute(message);
+        } catch (TelegramApiException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
     private void sendAdminMenu(Long chatId) {
         SendMessage message = SendMessage.builder()
                 .chatId(chatId.toString())
@@ -282,28 +351,37 @@ public class UpdateConsumer implements LongPollingSingleThreadUpdateConsumer {
     }
 
     private void sendMenu(Long chatId) {
+        UserSession session = getOrCreateSession(chatId);
         SendMessage message = SendMessage.builder()
                 .chatId(chatId.toString())
-                .text("Меню артиллериста")
+                .text("Тактический пульт артиллериста")
                 .build();
 
         var button1 = InlineKeyboardButton.builder()
-                .text("Установить свои координаты.")
+                .text("Установить свои координаты \uD83D\uDCCD")
                 .callbackData("my_point")
                 .build();
 
         var button2 = InlineKeyboardButton.builder()
-                .text("Установить координаты цели.")
+                .text("Установить координаты цели \uD83C\uDFAF")
                 .callbackData("enemy_point")
                 .build();
+
+        String towerText = session.isOnTower ? "Режим: НА ВЫСОТЕ 🗼 " : "Режим: НА ЗЕМЛЕ 🪖";
+        var buttonTower = InlineKeyboardButton.builder()
+                .text(towerText)
+                .callbackData("toggle_tower")
+                .build();
+
         var button3 = InlineKeyboardButton.builder()
-                .text("Рассчитать расстояние")
+                .text("Рассчитать расстояние \uD83D\uDCDF")
                 .callbackData("calc")
                 .build();
 
         List<InlineKeyboardRow> keyboardRows = List.of(
                 new InlineKeyboardRow(button1),
                 new InlineKeyboardRow(button2),
+                new InlineKeyboardRow(buttonTower),
                 new InlineKeyboardRow(button3));
 
         InlineKeyboardMarkup markup = new InlineKeyboardMarkup(keyboardRows);
